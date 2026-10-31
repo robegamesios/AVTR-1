@@ -5,7 +5,6 @@ import base64
 import contextlib
 import logging
 import os
-import re
 import time
 import uuid
 
@@ -26,6 +25,7 @@ from avaturn_live_streamer.events import (
 from avaturn_live_streamer.speech.speech_buffer import SpeechBuffer
 
 from .codex_voice import CodexVoice
+from .speech_phrases import phrase_boundary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,14 +94,8 @@ class JarvisClient:
                         reply.append(delta)
                         buffer += delta
                         while True:
-                            boundary = re.search(r"[.!?](?:\s+|$)", buffer)
-                            if boundary and boundary.end() >= 16:
-                                split = boundary.end()
-                            elif len(buffer) >= 160:
-                                split = buffer.rfind(" ", 40, 160)
-                                if split < 0:
-                                    break
-                            else:
+                            split = phrase_boundary(buffer)
+                            if split is None:
                                 break
                             await phrases.put(buffer[:split].strip())
                             buffer = buffer[split:].lstrip()
@@ -112,18 +106,26 @@ class JarvisClient:
                         ResponseTranscript(transcript="".join(reply).strip(), timestamp=time.time())
                     )
 
+            async def transcribe(audio):
+                started = time.monotonic()
+                result = await http.post(
+                    "/transcribe", json={"audio": base64.b64encode(audio).decode()}
+                )
+                result.raise_for_status()
+                _LOGGER.info("voice timing: stt_ms=%.0f", (time.monotonic() - started) * 1000)
+                return result.json()["text"]
+
             async def responses():
                 while True:
                     kind, value = await pending.get()
                     if kind == "audio":
-                        stt_started = time.monotonic()
-                        result = await http.post(
-                            "/transcribe", json={"audio": base64.b64encode(value).decode()}
-                        )
-                        result.raise_for_status()
-                        value = result.json()["text"]
+                        value = await transcribe(value)
+                    elif kind == "transcript_task":
+                        waited = time.monotonic()
+                        value = await value
                         _LOGGER.info(
-                            "voice timing: stt_ms=%.0f", (time.monotonic() - stt_started) * 1000
+                            "voice timing: stt_wait_after_pause_ms=%.0f",
+                            (time.monotonic() - waited) * 1000,
                         )
                     if value.strip():
                         await respond(value)
@@ -134,6 +136,14 @@ class JarvisClient:
                 chunks = []
                 silence = 0.0
                 duration = 0.0
+                prefetch = None
+                speculative = set()
+
+                def transcription_done(task):
+                    speculative.discard(task)
+                    if not task.cancelled() and task.exception() is not None:
+                        _LOGGER.warning("speculative transcription failed: %s", task.exception())
+
                 try:
                     async for event in sub:
                         if response_task.done():
@@ -151,17 +161,39 @@ class JarvisClient:
                                 os.environ.get("JARVIS_VAD_RMS", "450")
                             )
                             seconds = len(samples) / 16000
+                            if loud:
+                                # A resumed utterance invalidates the earlier snapshot.
+                                # Let native transcription finish; never run it concurrently.
+                                prefetch = None
                             if loud or chunks:
                                 if loud and not chunks:
                                     await bus.publish(DiscardAvatarSpeechBuffer())
                                 chunks.append(raw)
                                 duration += seconds
                                 silence = 0 if loud else silence + seconds
+                                # Overlap STT with the existing 650 ms endpoint pause.
+                                # Only confirmed turns reach the LLM; resumed speech
+                                # discards the speculative result and keeps capturing.
+                                if (
+                                    silence >= 0.30
+                                    and duration - silence >= 0.2
+                                    and prefetch is None
+                                    and not speculative
+                                ):
+                                    prefetch = asyncio.create_task(transcribe(b"".join(chunks)))
+                                    speculative.add(prefetch)
+                                    prefetch.add_done_callback(transcription_done)
                                 if silence >= 0.65 or duration >= 25:
                                     if duration - silence >= 0.2 and not pending.full():
-                                        pending.put_nowait(("audio", b"".join(chunks)))
+                                        if prefetch is not None:
+                                            pending.put_nowait(("transcript_task", prefetch))
+                                        else:
+                                            pending.put_nowait(("audio", b"".join(chunks)))
+                                    prefetch = None
                                     chunks, silence, duration = [], 0, 0
                 finally:
                     response_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await response_task
+                    if speculative:
+                        await asyncio.gather(*speculative, return_exceptions=True)
