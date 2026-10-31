@@ -307,6 +307,7 @@
     };
 
     const ENGINE_TABS = [
+      { id: "jarvis", label: "Jarvis · ChatGPT + Chatterbox" },
       { id: "openai", label: "OpenAI Realtime" },
       { id: "cartesia", label: "Cartesia" },
     ];
@@ -688,6 +689,7 @@
       openaiPrompt, setOpenaiPrompt,
       cartesiaKey, setCartesiaKey,
       cartesiaAgentId, setCartesiaAgentId,
+      chatterboxVoice, setChatterboxVoice, chatterboxVoices, voicesError,
     }) {
       const avatarOptions = registry.avatars || [];
       const backgroundOptions = registry.backgrounds || [];
@@ -731,6 +733,17 @@
             `)}
           </div>
 
+          ${engine === "jarvis" ? html`
+            <div class="field">
+              <label for="chatterbox-voice">Chatterbox voice</label>
+              <select id="chatterbox-voice" value=${chatterboxVoice}
+                onChange=${(e) => setChatterboxVoice(e.target.value)} disabled=${disabled || !chatterboxVoices.length}>
+                ${chatterboxVoices.map((voice) => html`<option value=${voice.id}>${voice.name}</option>`)}
+              </select>
+              <div class="hint">${voicesError || "Choose the voice for your next conversation. Your selection is remembered."}</div>
+            </div>
+            <div class="hint">Moonshine listens locally. GPT-6.1-Sol replies through your signed-in ChatGPT account via Codex. Chatterbox Turbo uses your selected voice.</div>
+          ` : null}
           ${engine === "openai" ? html`
             <div class="engine-panel">
               <div class="field">
@@ -798,7 +811,7 @@
       `;
     }
 
-    function SessionModal({ open, status, micId, mics, onChangeMic, onClose, videoRef, audioRef, audioTrack, muted, onToggleMute }) {
+    function SessionModal({ open, status, micId, mics, onChangeMic, onClose, videoRef, audioRef, audioTrack, muted, onToggleMute, volume, onVolumeChange }) {
       const wrapRef = useRef(null);
       const modalRef = useRef(null);
       useEffect(() => {
@@ -855,7 +868,7 @@
             </div>
             <div class="modal-body">
               <div class="video-wrap" ref=${wrapRef}>
-                <video ref=${videoRef} autoplay playsinline></video>
+                <video ref=${videoRef} autoplay playsinline muted></video>
                 <audio ref=${audioRef} autoplay></audio>
                 ${status === "ended" ? html`
                   <div class="ended-overlay">
@@ -871,6 +884,13 @@
                     ${mics.map((m, i) => html`<option value=${m.deviceId}>${m.label || `Microphone ${i + 1}`}</option>`)}
                   </select>
                 </div>
+                <label for="speaker-volume" style="display:flex;align-items:center;gap:12px;margin-top:14px">
+                  <span>Speaker volume</span>
+                  <input id="speaker-volume" type="range" min="0" max="1000" step="5"
+                    value=${volume} onInput=${(e) => onVolumeChange(Number(e.target.value))}
+                    style="flex:1;width:auto" aria-valuetext=${`${volume}%`} />
+                  <output for="speaker-volume" style="min-width:48px">${volume}%</output>
+                </label>
               </div>
             </div>
           </div>
@@ -899,7 +919,7 @@
       const mics = useMics();
       const probe = useConnectivityProbe();
       const registry = useRendererRegistry();
-      const [engine, setEngine] = useLocalStorage("engine", "openai");
+      const [engine, setEngine] = useLocalStorage("engine", "jarvis");
       const [avatarId, setAvatarId] = useLocalStorage("avatar_id", "");
       const [backgroundId, setBackgroundId] = useLocalStorage("background_id", "");
       const [openaiKey, setOpenaiKey] = useLocalStorage("openai_api_key", "");
@@ -908,12 +928,29 @@
       const [openaiPrompt, setOpenaiPrompt] = useLocalStorage("openai_prompt", DEFAULT_OPENAI_PROMPT);
       const [cartesiaKey, setCartesiaKey] = useLocalStorage("cartesia_api_key", "");
       const [cartesiaAgentId, setCartesiaAgentId] = useLocalStorage("cartesia_agent_id", "");
+      const [chatterboxVoice, setChatterboxVoice] = useLocalStorage("chatterbox_voice", "jarvis");
+      const [chatterboxVoices, setChatterboxVoices] = useState([]);
+      const [voicesError, setVoicesError] = useState(null);
+      useEffect(() => {
+        const controller = new AbortController();
+        fetch("/voices", {signal: controller.signal})
+          .then(async (r) => { if (!r.ok) throw new Error("Unable to load Chatterbox voices"); return r.json(); })
+          .then((data) => { setChatterboxVoices(data.voices || []); })
+          .catch((e) => { if (e.name !== "AbortError") setVoicesError(e.message); });
+        return () => controller.abort();
+      }, []);
+      useEffect(() => {
+        if (chatterboxVoices.length && !chatterboxVoices.some((v) => v.id === chatterboxVoice)) {
+          setChatterboxVoice(chatterboxVoices.some((v) => v.id === "jarvis") ? "jarvis" : chatterboxVoices[0].id);
+        }
+      }, [chatterboxVoices, chatterboxVoice]);
       const [micId, setMicId] = useState("");
       const [open, setOpen] = useState(false);
       const [status, setStatus] = useState("connecting");
       const [audioTrack, setAudioTrack] = useState(null);
       const [active, setActive] = useState(false);
       const [muted, setMuted] = useState(false);
+      const [volume, setVolume] = useLocalStorage("speaker_volume", 100);
       const [startError, setStartError] = useState(null);
 
       const toggleMute = useCallback(() => {
@@ -928,6 +965,15 @@
 
       const videoRef = useRef(null);
       const audioRef = useRef(null);
+      const playbackRef = useRef(null);
+      const volumeRef = useRef(volume);
+      useEffect(() => {
+        volumeRef.current = Math.max(0, Math.min(1000, Number(volume) || 0));
+        if (playbackRef.current) {
+          const { context, gain } = playbackRef.current;
+          gain.gain.setTargetAtTime(volumeRef.current / 100, context.currentTime, 0.02);
+        }
+      }, [volume]);
       const pcRef = useRef(null);
       const senderRef = useRef(null);
       const streamRef = useRef(null);
@@ -949,6 +995,10 @@
 
       const teardown = useCallback(() => {
         try { pcRef.current?.close(); } catch {}
+        if (playbackRef.current) {
+          playbackRef.current.context.close().catch(() => {});
+          playbackRef.current = null;
+        }
         if (streamRef.current) for (const t of streamRef.current.getTracks()) t.stop();
         pcRef.current = null;
         senderRef.current = null;
@@ -980,6 +1030,10 @@
       }, [teardown]);
 
       const buildEngineConfig = useCallback(() => {
+        if (engine === "jarvis") {
+          if (!chatterboxVoices.some((v) => v.id === chatterboxVoice)) throw new Error("Choose an available Chatterbox voice");
+          return {type: "jarvis", voice: chatterboxVoice};
+        }
         if (engine === "openai") {
           const apiKey = (openaiKey || "").trim();
           if (!apiKey) throw new Error("OpenAI API key is required");
@@ -999,7 +1053,7 @@
           return { type: "cartesia", api_key: apiKey, agent_id: agentId };
         }
         throw new Error(`Unknown engine: ${engine}`);
-      }, [engine, openaiKey, openaiModel, openaiVoice, openaiPrompt, cartesiaKey, cartesiaAgentId]);
+      }, [engine, chatterboxVoice, chatterboxVoices, openaiKey, openaiModel, openaiVoice, openaiPrompt, cartesiaKey, cartesiaAgentId]);
 
       const start = useCallback(async () => {
         if (active) return;
@@ -1016,6 +1070,19 @@
         setOpen(true);
         setMuted(false);
         try {
+          // Start from the button gesture so browser autoplay permits playback.
+          const context = new AudioContext();
+          const gain = context.createGain();
+          gain.gain.value = volumeRef.current / 100;
+          const limiter = context.createDynamicsCompressor();
+          limiter.threshold.value = -1;
+          limiter.attack.value = 0.003;
+          limiter.release.value = 0.15;
+          limiter.knee.value = 0;
+          limiter.ratio.value = 20;
+          gain.connect(limiter).connect(context.destination);
+          playbackRef.current = { context, gain, limiter };
+          await context.resume();
           let iceCfg = {};
           try {
             iceCfg = await fetchIceConfig();
@@ -1031,7 +1098,13 @@
           pc.ontrack = (ev) => {
             log("ontrack", ev.track.kind);
             if (ev.track.kind === "video" && videoRef.current) videoRef.current.srcObject = ev.streams[0];
-            else if (ev.track.kind === "audio" && audioRef.current) audioRef.current.srcObject = ev.streams[0];
+            else if (ev.track.kind === "audio" && playbackRef.current) {
+              const { context, gain } = playbackRef.current;
+              const source = context.createMediaStreamSource(new MediaStream([ev.track]));
+              source.connect(gain);
+              playbackRef.current.source = source;
+              context.resume().catch((e) => log("audio playback:", e.message));
+            }
           };
           pc.onconnectionstatechange = () => {
             log("pc state:", pc.connectionState);
@@ -1119,6 +1192,8 @@
           <${ConfigCard}
             mics=${mics}
             engine=${engine} setEngine=${setEngine}
+            chatterboxVoice=${chatterboxVoice} setChatterboxVoice=${setChatterboxVoice}
+            chatterboxVoices=${chatterboxVoices} voicesError=${voicesError}
             micId=${micId} setMicId=${setMicId}
             registry=${registry}
             avatarId=${avatarId} setAvatarId=${setAvatarId}
@@ -1142,6 +1217,7 @@
           videoRef=${videoRef} audioRef=${audioRef}
           audioTrack=${audioTrack}
           muted=${muted} onToggleMute=${toggleMute}
+          volume=${volume} onVolumeChange=${setVolume}
         />
       `;
     }

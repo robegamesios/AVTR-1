@@ -21,14 +21,15 @@ from avaturn_live_streamer.conversation_engines.cartesia_client import CartesiaA
 from avaturn_live_streamer.conversation_engines.configs import (
     CartesiaConversationEngineConfig,
     ConversationEngineConfig,
+    JarvisConversationEngineConfig,
     OpenAIRealtimeAPIConversationEngineConfig,
     OpenaiRealtimeApiVoice,
 )
 from avaturn_live_streamer.conversation_engines.realtime_api_client import RealtimeApiClient
 from avaturn_live_streamer.event_bus import EventBus
 
-EngineKind = Literal["openai", "cartesia"]
-ENGINE_KINDS: tuple[EngineKind, ...] = ("openai", "cartesia")
+EngineKind = Literal["openai", "cartesia", "jarvis"]
+ENGINE_KINDS: tuple[EngineKind, ...] = ("openai", "cartesia", "jarvis")
 
 type EngineRun = Callable[[EventBus, StreamClocks], Coroutine[None, None, None]]
 type BuiltEngine = tuple[ConversationEngineConfig, EngineRun]
@@ -42,6 +43,11 @@ DEFAULT_OPENAI_PROMPT = (
 )
 DEFAULT_OPENAI_VOICE: OpenaiRealtimeApiVoice = "shimmer"
 DEFAULT_OPENAI_MODEL = "gpt-realtime-2"
+
+
+class JarvisEngineOptions(BaseModel):
+    type: Literal["jarvis"] = "jarvis"
+    voice: str = "jarvis"
 
 
 class OpenAIEngineOptions(BaseModel):
@@ -59,7 +65,7 @@ class CartesiaEngineOptions(BaseModel):
 
 
 EngineOptions = Annotated[
-    OpenAIEngineOptions | CartesiaEngineOptions,
+    OpenAIEngineOptions | CartesiaEngineOptions | JarvisEngineOptions,
     Discriminator("type"),
 ]
 
@@ -146,6 +152,10 @@ async def build_openai(
 
 async def build_engine(options: EngineOptions, *, stream_id: str) -> BuiltEngine:
     match options:
+        case JarvisEngineOptions():
+            from .jarvis_client import JarvisClient
+
+            return JarvisConversationEngineConfig(), JarvisClient(voice=options.voice).run
         case OpenAIEngineOptions():
             return await build_openai(stream_id=stream_id, options=options)
         case CartesiaEngineOptions():

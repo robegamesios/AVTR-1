@@ -19,6 +19,7 @@ Invoke via:
 """
 
 import asyncio
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -31,9 +32,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from avaturn_live_streamer.core.logs import get_logger, setup_logging
-from avaturn_live_streamer.settings import get_config
-from avaturn_live_streamer.types import BackgroundId, RendererAvatarId
 from avaturn_live_streamer.clocks import StreamClocks
 from avaturn_live_streamer.config import RendererConfig
 from avaturn_live_streamer.conversation_engines.builders import (
@@ -41,6 +39,7 @@ from avaturn_live_streamer.conversation_engines.builders import (
     EngineOptions,
     build_engine,
 )
+from avaturn_live_streamer.core.logs import get_logger, setup_logging
 from avaturn_live_streamer.event_bus import EventBus
 from avaturn_live_streamer.events import Shutdown
 from avaturn_live_streamer.localrtc import (
@@ -50,6 +49,9 @@ from avaturn_live_streamer.localrtc import (
     resolve_ice_servers,
     serialize_ice_servers,
 )
+from avaturn_live_streamer.localrtc.video_quality import configure_video_bitrates
+from avaturn_live_streamer.settings import get_config
+from avaturn_live_streamer.types import BackgroundId, RendererAvatarId
 
 
 def _filter_sdp_to_relay_only(sdp: str) -> str:
@@ -199,11 +201,24 @@ def _make_app(
     max_duration: int,
 ) -> FastAPI:
     app = FastAPI()
+    video_bitrates = configure_video_bitrates()
+    _LOGGER.info("local-stream video bitrates", **video_bitrates)
     slot = _SessionSlot()
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return _UI_HTML_PATH.read_text()
+
+    @app.get("/voices")
+    async def voices_route():
+        base = os.environ.get("JARVIS_VOICE_URL", "http://127.0.0.1:8083")
+        try:
+            async with httpx.AsyncClient(timeout=10) as http:
+                response = await http.get(f"{base}/voices")
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Chatterbox voice catalog unavailable") from exc
 
     @app.get("/avatars")
     async def avatars_route() -> dict[str, object]:

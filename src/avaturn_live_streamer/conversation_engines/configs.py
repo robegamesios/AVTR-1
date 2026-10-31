@@ -34,6 +34,12 @@ class CartesiaConversationEngineConfig(BaseModel):
     model_config = ConfigDict(title="CartesiaCEConfig")
 
 
+class JarvisConversationEngineConfig(BaseModel):
+    type: Literal["jarvis"] = "jarvis"
+
+
 ConversationEngineConfig = (
-    OpenAIRealtimeAPIConversationEngineConfig | CartesiaConversationEngineConfig
+    OpenAIRealtimeAPIConversationEngineConfig
+    | CartesiaConversationEngineConfig
+    | JarvisConversationEngineConfig
 )

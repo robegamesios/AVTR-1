@@ -338,7 +338,21 @@ class AvatarLoader:
             img = cv2.resize(img, (new_w, new_h))
         h, w = img.shape[:2]
         if h != self.out_h or w != self.out_w:
-            img = cv2.resize(img, (self.out_w, self.out_h))
+            # Fit arbitrary portraits into the video canvas without changing
+            # face proportions. RGBA padding remains transparent for matting.
+            scale = min(self.out_w / w, self.out_h / h)
+            fit_w = min(self.out_w, max(1, round(w * scale)))
+            fit_h = min(self.out_h, max(1, round(h * scale)))
+            fitted = cv2.resize(img, (fit_w, fit_h))
+            canvas = np.full(
+                (self.out_h, self.out_w, img.shape[2]), 200, dtype=img.dtype
+            )
+            if img.shape[2] == 4:
+                canvas[:, :, 3] = 0
+            left = (self.out_w - fit_w) // 2
+            top = (self.out_h - fit_h) // 2
+            canvas[top : top + fit_h, left : left + fit_w] = fitted
+            img = canvas
             h, w = self.out_h, self.out_w
 
         # Auto-detect matting regime from channels:

@@ -53,7 +53,7 @@ def _start_renderer(port: int) -> subprocess.Popen[bytes]:
     # Disable the LB keep-alive worker -- there is no LB in the local setup.
     env.setdefault("LOAD_BALANCER_URL", "disabled")
     cmd = [
-        "pixi", "run", "-e", "default",
+        "pixi", "run", "-e", "renderer",
         "python", "-m", "uvicorn",
         "avtr1_renderer.api.app:app",
         "--host", "0.0.0.0",
@@ -112,6 +112,9 @@ def _start_streamer(host: str, port: int, renderer_port: int) -> subprocess.Pope
         "--host", host,
         "--port", str(port),
     ]
+    # start-local.sh supplies the speech worker; its startup preloads models.
+    if os.environ.get("JARVIS_ROOT"):
+        _wait_for_health(_env_int("JARVIS_VOICE_PORT", 8083), timeout_s=120)
     LOG.info("starting streamer: %s", " ".join(cmd))
     return subprocess.Popen(cmd, env=env)
 

@@ -1,3 +1,5 @@
+For the local Jarvis integration and launch instructions, see [LOCAL-SETUP.md](LOCAL-SETUP.md).
+
 <div align="center">
 
 # AVTR-1
