@@ -1,262 +1,159 @@
-For the local Jarvis integration and launch instructions, see [LOCAL-SETUP.md](LOCAL-SETUP.md).
+# AVTR-1 mod-1 — JARVIS voice avatar
 
-<div align="center">
+This is [robegamesios’s modified Linux version of AVTR-1](https://github.com/robegamesios/AVTR-1), called **mod-1**. It connects local Moonshine speech recognition, streamed GPT replies through a signed-in Codex session, and local Chatterbox Turbo speech synthesis to the AVTR-1 avatar renderer and browser interface.
 
-# AVTR-1
+The original [avaturn-live/avtr-1](https://github.com/avaturn-live/avtr-1) project is referred to as **origin** when comparing implementations. This fork retains its motion model, TensorRT renderer, speech scheduler, and WebRTC foundations, with a modified conversation pipeline and local launch workflow.
 
-[![Project Page](https://img.shields.io/badge/Project%20Page-AVTR--1-8A2BE2)](https://avaturn-live.github.io/avtr-1-projectpage/)
-[![Managed API](https://img.shields.io/badge/Managed%20API-avaturn.live-blue?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oFFA8fAzOfxeUAAAOsSURBVEjHfZVPSFxXFMa/+wYpJGqofxCrhBKcpBMTozGRdFNCSDYtpRFCFu0mWYRgNor54za7JILgspa6SALZl9JCVgndFGqqVWmpmkKjUWGCCiGOzrx376+L++Y5o5Oe1TDvfueec+53vs+oJDAKjJVo1ef6TCf0keokbehfzeg3/WCWJVJyBlUKAkmig+/ZoFJkGaN75+RueEpiP8PkAbBEOJzDgcMSYQHYYoQaf3ovPMMkAKFHRcnVMdoRAjBFelcKUhI9LHmwgwS8RS5JAg7rbAgs0lOSgkCijRUoRDuHs9ylnQCRYSjO7aMQASsciWeBIaCaaY+z5AiBpzQgTnKDPk4hGnkKhORwxRtm2EeA8eWPAAXLAw4hWrlKLZ1MJDOYoYMa+jmISDNKwZczLBEIQyc57KbrRZzhJhcQ4jqL5LE4tnnFFYQ4Rz9diF62HZYCGT+DMSAaRdwD4DHiBEIcIMMxqlH8zyMA7iHu+zbGJUOL+yOot0qbek0IvdVhNep3LehHzWpVTq06ri+U1mm90Z+ql/SpVvWSlOFtcFT0AXYTMUAEDCKeVSTic8QdIOIW4h1Y4Jp4CEQRTZwF5qjiYkydEIvDxb8scAnDHHCeBkLfxBMxCaGF24gXfEOKl7iYt6VhccxTxWUmEQNA6IBZse5ryVJHK2KwhIflEQFDiCaaWcajWNPOx28Rn5DDebJUrGGDDOK7kktKFjOQZJSXVHndjaQPhCRXtodrvphlmmlCDP1vC4OIFurIFltYF7N+HAOISS5Txfx7h/gPKb7mBeI2fvRMiSdAFNLAeWAOwyXA7nnGCLhIFX8DZ2ki8iU9FNcA+w5xiwi4g3hesYVnyRsNIDZ9D32GFveXqbW0mWb9KmlN7WrUhBb0k2b1WoGadVxfKq1uvdG8amV0WmtaICW3FnRKYhyI7vsVAR4ly1TNMTIcSJbpcbJMo76BMf8OGQrYbdeL6KKfcwhxhVds47DkWeQ6QlzgJmcQvWw6LDm6MF7QhoGwwChpxEH6qaGDmaT7CTqp5SqtiEM8wEIBGJFIeUnbx4x/aJdIWiPiFH3c4CSiIZE0W6TENNUEmKKoHmF1R1RDYIkhMoiAdu6SLaFXIQJWaSsxmFjWF8GGtkzWc2yVyXrsDUtlsp6kOMxUXIAjpk4R7GDHWCbJvM+bahiJr/RmVrQ2l1hbnmH2V4CXmGs3Y2QrUnGDcTp2m6upaO8t+ko96tDH+lDSulY0rV/0s3m9197/A6bOU5Zxdgd9AAAAAElFTkSuQmCC)](https://avaturn.live)
-[![Weights](https://img.shields.io/badge/HuggingFace-Weights-orange?logo=huggingface)](https://huggingface.co/avaturn-live/avtr-1)
-[![Demo](https://img.shields.io/badge/Demo-Try%20Now-brightgreen?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAQAAADZc7J/AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oFFA8fAzOfxeUAAAOsSURBVEjHfZVPSFxXFMa/+wYpJGqofxCrhBKcpBMTozGRdFNCSDYtpRFCFu0mWYRgNor54za7JILgspa6SALZl9JCVgndFGqqVWmpmkKjUWGCCiGOzrx376+L++Y5o5Oe1TDvfueec+53vs+oJDAKjJVo1ef6TCf0keokbehfzeg3/WCWJVJyBlUKAkmig+/ZoFJkGaN75+RueEpiP8PkAbBEOJzDgcMSYQHYYoQaf3ovPMMkAKFHRcnVMdoRAjBFelcKUhI9LHmwgwS8RS5JAg7rbAgs0lOSgkCijRUoRDuHs9ylnQCRYSjO7aMQASsciWeBIaCaaY+z5AiBpzQgTnKDPk4hGnkKhORwxRtm2EeA8eWPAAXLAw4hWrlKLZ1MJDOYoYMa+jmISDNKwZczLBEIQyc57KbrRZzhJhcQ4jqL5LE4tnnFFYQ4Rz9diF62HZYCGT+DMSAaRdwD4DHiBEIcIMMxqlH8zyMA7iHu+zbGJUOL+yOot0qbek0IvdVhNep3LehHzWpVTq06ri+U1mm90Z+ql/SpVvWSlOFtcFT0AXYTMUAEDCKeVSTic8QdIOIW4h1Y4Jp4CEQRTZwF5qjiYkydEIvDxb8scAnDHHCeBkLfxBMxCaGF24gXfEOKl7iYt6VhccxTxWUmEQNA6IBZse5ryVJHK2KwhIflEQFDiCaaWcajWNPOx28Rn5DDebJUrGGDDOK7kktKFjOQZJSXVHndjaQPhCRXtodrvphlmmlCDP1vC4OIFurIFltYF7N+HAOISS5Txfx7h/gPKb7mBeI2fvRMiSdAFNLAeWAOwyXA7nnGCLhIFX8DZ2ki8iU9FNcA+w5xiwi4g3hesYVnyRsNIDZ9D32GFveXqbW0mWb9KmlN7WrUhBb0k2b1WoGadVxfKq1uvdG8amV0WmtaICW3FnRKYhyI7vsVAR4ly1TNMTIcSJbpcbJMo76BMf8OGQrYbdeL6KKfcwhxhVds47DkWeQ6QlzgJmcQvWw6LDm6MF7QhoGwwChpxEH6qaGDmaT7CTqp5SqtiEM8wEIBGJFIeUnbx4x/aJdIWiPiFH3c4CSiIZE0W6TENNUEmKKoHmF1R1RDYIkhMoiAdu6SLaFXIQJWaSsxmFjWF8GGtkzWc2yVyXrsDUtlsp6kOMxUXIAjpk4R7GDHWCbJvM+bahiJr/RmVrQ2l1hbnmH2V4CXmGs3Y2QrUnGDcTp2m6upaO8t+ko96tDH+lDSulY0rV/0s3m9197/A6bOU5Zxdgd9AAAAAElFTkSuQmCC)](https://avaturn.live/demo)
+**`develop` is the default development branch. `main` also contains the Moonshine + Chatterbox integration.** The former `local/jarvis-voice` branch has been merged and deleted. This repository targets Linux with NVIDIA CUDA/TensorRT; Apple Silicon work is maintained separately in [AVTR-1-Mac](https://github.com/robegamesios/AVTR-1-Mac).
 
-</div>
+## What mod-1 adds
 
-**AVTR-1** is a flow-matching-based autoregressive model for live dialogue. Given a portrait image and dual-stream audio, it renders lip-synced speech and active listening at 25 fps on a single GPU. Built for production deployment: model weights, TensorRT-accelerated inference, and the live-session backend - available as an API or fully self-hosted
+- Local English transcription with Moonshine, using the existing JARVIS-AI Python environment.
+- A persistent Codex app-server connection per conversation, using the signed-in account for streamed text replies. The configured defaults are `gpt-6.1-sol` and low reasoning effort.
+- Local Chatterbox Turbo synthesis through JARVIS-AI, with a selectable reference voice and output loudness normalization.
+- Complete-sentence speech generation while later reply text is still arriving, including punctuation lookahead for abbreviations and decimals.
+- Speculative transcription after 300 ms of silence, overlapping recognition with the 650 ms endpoint pause. Resumed speech invalidates the earlier snapshot; only a confirmed turn reaches the language model.
+- Speech-model warmup at launch, voice selection in the browser, adjustable playback volume, and timing logs for recognition, first text, and synthesis.
 
-<div align="center">
-  <video src="https://github.com/user-attachments/assets/5e4f96af-973a-4aa4-a8be-e0ce6f44a5d1" muted=false width="50%"></video>
-</div>
+## Conversation flow
 
----
+```text
+Browser microphone → Moonshine → Codex streamed reply → sentence queue
+                                                        ↓
+Browser audio + avatar ← WebRTC ← AVTR renderer ← Chatterbox Turbo PCM
+```
 
-## 📑 What's included
+Speech recognition and synthesis run locally. Reply text is processed through the signed-in Codex service, so this conversation mode requires an internet connection and account access. It uses an ephemeral conversation thread, with tools unavailable; it does not connect to Hermes tools or JARVIS memories.
 
-- [x] Model weights
-- [x] Inference code
-- [x] Interactive streaming demo
-- [ ] Technical report (Coming soon)
-- [ ] Production-ready back-end (Coming soon)
+## Requirements
 
----
+- Linux x86-64 and an NVIDIA GPU compatible with the renderer’s TensorRT engines.
+- A CUDA 12.8-compatible driver/runtime setup and the dependencies defined in `pixi.toml` and `pixi.lock`.
+- [Pixi](https://pixi.sh/) for separate renderer and streamer environments.
+- A working JARVIS-AI checkout with `venv/bin/python`, `moonshine_voice`, and `backend.modules.chatterbox_client.ChatterboxTurboTTS`, plus that module’s speech dependencies and model assets. This fork imports that implementation rather than bundling JARVIS-AI.
+- A signed-in Codex executable at `~/.local/bin/codex`, as used by the current client.
+- At least one Chatterbox reference recording, normally `JARVIS-AI/backend/assets/voices/jarvis.wav`.
 
-## Table of Contents
+The existing Ubuntu setup was prepared with an RTX 3090 with 24 GB VRAM. That is a tested setup, not a minimum hardware specification.
 
-1. [Quick Start](#1-quick-start)
-2. [Performance](#2-performance)
-3. [Troubleshooting](#troubleshooting)
-
----
-
-## 1. 🚀 Quick Start
-
-### Prerequisites
-
-- Linux
-- NVIDIA GPU (Ampere or later recommended)
-- CUDA 12.x + TensorRT 10.x
-- [pixi](https://prefix.dev/) — `curl -fsSL https://pixi.sh/install.sh | sh`
-
-### Install
+## Install and launch
 
 ```bash
-git clone https://github.com/avaturn-live/avtr-1.git
-cd avtr-1
+git clone --branch develop https://github.com/robegamesios/AVTR-1.git
+cd AVTR-1
 pixi install
 ```
 
-### Set storage path (Optional)
+Optionally set the model storage directory before downloading and building. Its default is this checkout’s `artifacts/` directory.
 
 ```bash
 export AVTR1_LOCAL_STORAGE=/path/to/avtr1_storage
 ```
 
-All downloaded weights and built engines go here. Defaults to `<project_root>/artifacts/` (the repo checkout, not the caller's working directory) when unset.
-
-### Download weights
+Download model assets and build the engines for this GPU:
 
 ```bash
-pixi run download
+pixi run -e renderer download
+pixi run -e renderer build-trt-engines
 ```
 
-First run will prompt for a HuggingFace login via `hf auth login`
-(automatically invoked as a dependency of `download`).
+The download task invokes Hugging Face login. It retrieves AVTR-1 assets from [avaturn-live/avtr-1](https://huggingface.co/avaturn-live/avtr-1) and renderer dependencies from [digital-avatar/ditto-talkinghead](https://huggingface.co/digital-avatar/ditto-talkinghead). TensorRT engines are built locally for the target GPU.
 
-### Build TRT engines
-
-Weights are pulled from two public HF repos by the previous step:
-AVTR-1 weights from [avaturn-live/avtr-1](https://huggingface.co/avaturn-live/avtr-1)
-and LivePortrait weights repackaged as ONNX graphs from
-[digital-avatar/ditto-talkinghead](https://huggingface.co/digital-avatar/ditto-talkinghead).
-TRT engines are compute-capability specific and built locally — run the scripts
-below once per machine; outputs land under `$AVTR1_LOCAL_STORAGE`.
+Set the actual JARVIS-AI location and start mod-1:
 
 ```bash
-# Build everything at once
-pixi run build-trt-engines
-
-# Or individually
-pixi run build-trt-engines-avtr1
-pixi run build-trt-engines-renderer
-pixi run build-trt-engines-hubert
+export JARVIS_ROOT=/path/to/JARVIS-AI
+./start-local.sh
 ```
 
-### Run interactive demo
+The launcher starts the speech adapter and the renderer/streamer orchestrator. It waits for service readiness before starting the browser server. Open **http://127.0.0.1:8081**, select **Jarvis · ChatGPT + Chatterbox**, choose a voice, avatar, and background, and start the conversation. Allow microphone access. Headphones reduce speaker feedback. Stop the launcher with **Ctrl+C**.
+
+| Service | Default address |
+| --- | --- |
+| Browser / WebRTC streamer | `http://127.0.0.1:8081` |
+| Renderer | `http://localhost:8082` |
+| Local speech adapter | `http://127.0.0.1:8083` |
+
+The renderer currently binds to `0.0.0.0`; the browser server defaults to loopback. These addresses describe the local launcher, not a public deployment configuration.
+
+## Configuration
+
+Export these variables in the shell before `./start-local.sh`. This is especially important for speech-worker settings: the launcher starts that worker before the orchestrator loads `.env`.
+
+| Variable | Default / purpose |
+| --- | --- |
+| `JARVIS_ROOT` | `/home/rob/Documents/Github/JARVIS-AI`; set this to your checkout |
+| `CHATTERBOX_VOICES_DIR` | `$JARVIS_ROOT/backend/assets/voices`; browser voice catalog |
+| `CHATTERBOX_REFERENCE_AUDIO` | `$JARVIS_ROOT/backend/assets/voices/jarvis.wav`; initial model reference |
+| `JARVIS_VOICE_PORT` | `8083`; speech-worker port |
+| `JARVIS_VOICE_URL` | `http://127.0.0.1:8083`; streamer’s speech endpoint; update when changing the worker port |
+| `AVTR_LLM_MODEL` | `gpt-6.1-sol` |
+| `AVTR_LLM_EFFORT` | `low` |
+| `JARVIS_VAD_RMS` | `450`; microphone energy threshold for speech detection |
+| `STREAMER_PORT` | `8081` through `start-local.sh` |
+| `RENDERER_PORT` | `8082` through `start-local.sh` |
+| `AVTR_VIDEO_BITRATE` | `6000000` bits/s |
+| `AVTR_VIDEO_MIN_BITRATE` | `2000000` bits/s |
+| `AVTR_VIDEO_MAX_BITRATE` | `12000000` bits/s |
+
+Voice references can be WAV, FLAC, MP3, OGG, or M4A files. The browser remembers the selected voice for the next conversation. Per-request synthesis uses the selected catalog file; setting the initial reference alone does not replace the catalog.
+
+The inherited OpenAI Realtime and Cartesia conversation options remain available with their own configuration. They are alternatives to the mod-1 JARVIS pipeline. Optional STUN/TURN settings are listed in [.env.example](.env.example); direct local/LAN connections usually do not require a TURN relay.
+
+## Performance and timing
+
+The renderer targets 25 fps and generates five frames per motion chunk, corresponding to 200 ms of playback. Actual conversational latency also includes endpoint detection, recognition, first reply text, sentence completion, synthesis, rendering, and browser delivery.
+
+The Ubuntu recording and session logs supplied on November 3, 2026 are the mod-1 comparison reference for the Mac port. They demonstrate the desired natural idle animation and smooth conversational playback in that session. They do not establish a universal latency or hardware guarantee. The upstream GPU benchmark table has been removed because it did not measure this modified conversation pipeline.
+
+Capture a session log:
+
 ```bash
-pixi run interactive-demo
+./start-local.sh 2>&1 | tee mod-1-session.log
 ```
 
+Look for `voice timing:` entries:
 
-### Run offline generation
+- `stt_ms`: transcription request duration.
+- `stt_wait_after_pause_ms`: remaining transcription wait after the endpoint gate.
+- `first_text_ms`: time to the first text delta after reply processing starts.
+- `tts_ms` and `audio_seconds`: synthesis duration and generated audio length.
+- `first_audio=True` with `elapsed_ms`: time until the first generated audio is published to AVTR’s speech events.
 
-**Single speaker.** Avatar lip-syncs the given audio track.
-
-```bash
-pixi run generate_offline --speech example/speaker_1.ogg
-
-# with a custom avatar and background:
-pixi run generate_offline --speech example/speaker_1.ogg --avatar maria --bg minimal_office
-```
-
-**Two-speaker dialogue.** Avatar voices `--speech` and reacts (active listening) to the peer audio on `--listen`. Run twice with the tracks swapped to render both sides of the conversation.
-
-```bash
-# avatar = speaker 1 (elena)
-pixi run generate_offline --speech example/speaker_1.ogg --listen example/speaker_2.ogg --avatar elena  --out elena.mp4
-# avatar = speaker 2 (marcus)
-pixi run generate_offline --speech example/speaker_2.ogg --listen example/speaker_1.ogg --avatar marcus --out marcus.mp4
-
-# stitch both sides into a single side-by-side video:
-ffmpeg -i elena.mp4 -i marcus.mp4 -filter_complex \
-  "[0:v][1:v]hstack=inputs=2[v];[0:a][1:a]amix=inputs=2[a]" \
-  -map "[v]" -map "[a]" dialogue.mp4
-```
-
-**Silence / idle motion.** No audio — renders idle micro-motion for the given duration.
-
-```bash
-pixi run generate_offline --duration 10
-```
-
-Available avatars are the filenames (without `.png`) inside
-`$AVTR1_LOCAL_STORAGE/v1/avatars_artifacts/reference_frames/` after downloading.
----
-
-## 2. Performance
-
-### Per-chunk latency
-
-AVTR-1 generates motion in 5-frame chunks end-to-end. At 25 fps that's 200 ms
-of output per chunk, so any GPU under that line runs in real-time.
-
-| GPU         | Latency / 5-frame chunk | Real-time factor |
-| ----------- | ----------------------- | ---------------- |
-| L40         | 84 ms                   | 2.4×             |
-| A100        | 91 ms                   | 2.2×             |
-| RTX 4060 Ti | 166 ms                  | 1.2×             |
-| RTX 3070    | 181 ms                  | 1.1×             |
-| L4          | 202 ms                  | 0.99×            |
-| RTX 3060 Ti | 206 ms                  | 0.97×            |
-| RTX 4060    | 232 ms                  | 0.86×            |
-
-Real-time factor = 200 ms / latency. ≥ 1.0× means the GPU keeps up with 25 fps.
-
----
+**First audio published is earlier than rendered, audible browser playback.** These timers do not independently measure microphone-question-end to audible-answer latency. The old `turn-latency-measurement` experiment was not merged, so its `latency_table.py` tool is not part of this version.
 
 ## Troubleshooting
 
-<details>
-<summary><b>TURN server setup</b> (optional)</summary>
+- **Speech worker fails to import:** check `JARVIS_ROOT`, its `venv/bin/python`, Moonshine, and the JARVIS Chatterbox module. Pixi does not install that external environment.
+- **No voices:** check the reference files in `CHATTERBOX_VOICES_DIR` and the speech adapter’s `/voices` endpoint.
+- **No GPT reply:** check the Codex executable path and account sign-in on the same Linux user account that runs the launcher.
+- **Speech is missed or background noise triggers turns:** adjust `JARVIS_VAD_RMS`, check the microphone, and use headphones.
+- **Renderer startup fails:** verify model downloads, compatible CUDA/TensorRT dependencies, and locally built engines for this GPU.
+- **WebRTC cannot connect remotely:** use the browser connectivity probe and configure STUN/TURN as needed through `.env.example`. Remote microphone access also depends on the browser’s secure-context requirements.
 
-ICE tries direct UDP first (host candidates + STUN-reflexive
-candidates from a public STUN server) and only needs a TURN relay when the
-network in between can't pass UDP between browser and streamer — typical
-when the streamer lives on a cloud VM whose security group blocks inbound
-UDP, or when one peer is behind symmetric NAT.
+See [LOCAL-SETUP.md](LOCAL-SETUP.md) for a short operational checklist.
 
-If direct UDP works for your setup you can skip this section entirely. The
-browser's connectivity card after the engine dropdown tells you which path
-ICE actually picked, and the same UI links back here when the verdict is
-"only TURN works" or "nothing worked".
+## Offline rendering
 
-The project is wired for **Cloudflare's Realtime TURN**. The free tier is
-generous enough for development; no credit card required.
+The inherited renderer can still generate an avatar video from recorded speech or silence:
 
-**1. Create a TURN application on Cloudflare**
-
-- Sign in to [dash.cloudflare.com](https://dash.cloudflare.com).
-- Navigate to **Realtime → TURN Server**.
-- Click **Create TURN App**, give it a name (e.g. `avtr1-dev`), and submit.
-
-**2. Copy the two credential values**
-
-On the application's detail page you'll see:
-
-- **Turn Key ID** — short identifier (looks like a UUID without dashes).
-- **API Token** — long secret shown only once at creation. Save it before
-  navigating away.
-
-**3. Put them in `.env`**
-
-```dotenv
-CLOUDFLARE_TURN_KEY_ID="<Turn Key ID>"
-CLOUDFLARE_TURN_KEY_TOKEN="<API Token>"
+```bash
+pixi run -e renderer generate_offline --speech example/speaker_1.ogg
+pixi run -e renderer generate_offline --speech example/speaker_1.ogg --avatar maria --bg minimal_office
+pixi run -e renderer generate_offline --duration 10
 ```
 
-That's it. On the next `/ice-servers` request the streamer mints a fresh,
-short-lived TURN credential per session via Cloudflare's
-`/v1/turn/keys/{kid}/credentials/generate` endpoint — the long-lived API
-token never leaves the server. You can verify it picked up the keys by
-watching the streamer log for `ice: using Cloudflare TURN` on the first
-browser request.
+## Attribution and licenses
 
-The browser-side connectivity probe (the small status card under the
-controls) tells you which ICE path actually wins:
+Mod-1 builds on [AVTR-1 by Avaturn / Goodsize Inc.](https://github.com/avaturn-live/avtr-1). The original model, renderer, streamer, and their notices retain their respective licenses. The local integration also depends on Moonshine, Chatterbox Turbo, Codex, and the external JARVIS-AI implementation; their applicable terms remain separate.
 
-- ✓ **host** — the browser saw its own local interface; always present.
-- ✓ **server-reflexive via STUN** — the browser learned its public IP via
-  STUN; doesn't prove the streamer is reachable on UDP from the browser.
-- ✓ **relay via TURN** — the browser successfully allocated a Cloudflare
-  TURN relay; required when direct UDP can't traverse the network in
-  between.
+Preserved repository notices:
 
-If the relay check fails while TURN is configured the most likely cause is
-wrong credentials — re-check that you copied the full **API Token** (not
-the Key ID twice) into `CLOUDFLARE_TURN_KEY_TOKEN`.
+- [License and component map](LICENSE.md)
+- [Model and tooling license](LICENSE-MODEL.md)
+- [Renderer license and required notice](LICENSE-RENDERER.md)
+- [Streamer license and required notice](LICENSE-STREAMER.md)
+- [Patent notice](PATENTS.md)
+- [Third-party notices](THIRD-PARTY-NOTICES.md)
 
-**Alternatives.** Anything that speaks the standard TURN protocol works.
-Set `TURN_URL` (and optionally `TURN_USERNAME` / `TURN_CREDENTIAL`) instead
-of the Cloudflare variables and `resolve_ice_servers()` will use it
-verbatim — e.g. a self-hosted [coturn](https://github.com/coturn/coturn) on
-a small VM. STUN-only also works *if* you can open the appropriate UDP
-port range inbound on whatever firewall sits in front of the streamer.
-
-</details>
-
----
-
-## License
-
-This repository contains three separately licensed components:
-
-- **`scripts/`** — build and demo tooling, released under the **AVTR-1
-  Community License** ([LICENSE-MODEL.md](LICENSE-MODEL.md)). Permits
-  commercial use by entities under USD 10M annual revenue; entities at or
-  above that threshold need a commercial agreement. The same license governs
-  the AVTR-1 weights distributed at
-  [avaturn-live/avtr-1](https://huggingface.co/avaturn-live/avtr-1).
-- **`src/avtr1_renderer/`** — Avaturn Renderer (inference pipeline), released
-  under the **PolyForm Noncommercial License 1.0.0** with a Required Notice
-  ([LICENSE-RENDERER.md](LICENSE-RENDERER.md)). **Noncommercial use only**,
-  regardless of revenue; any commercial use needs a separate Renderer
-  Commercial License.
-- **`src/avaturn_live_streamer/`** — Avaturn Streamer (orchestration
-  backend), released under the **PolyForm Noncommercial License 1.0.0** with
-  a Required Notice and patent reservation
-  ([LICENSE-STREAMER.md](LICENSE-STREAMER.md),
-  [PATENTS.md](PATENTS.md)). **Noncommercial use only**, regardless of
-  revenue; any commercial use needs a separate Streamer Commercial License.
-
-See [LICENSE.md](LICENSE.md) for the full component map and the consequences
-of the multi-license structure. In any conflict between this summary and the
-underlying license files, the license files control.
-
-### Non-commercial dependency
-
-The pipeline uses InsightFace's pretrained SCRFD detector and 2D106 landmark
-model, which are licensed for **non-commercial research use only**. To use
-AVTR-1 commercially you must either obtain a commercial license from
-InsightFace (deepinsight@gmail.com) or replace these models with
-permissively-licensed alternatives (e.g., MediaPipe). See
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full picture.
-
-**Commercial inquiries:** hello@avaturn.me
+The fork does not replace or relicense the upstream components. Consult those files for the terms that apply to each component.
